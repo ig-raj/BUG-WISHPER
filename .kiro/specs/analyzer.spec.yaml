@@ -1,0 +1,136 @@
+# .kiro/specs/analyzer.spec.yaml - Bug Whisperer API specification
+openapi: 3.0.3
+info:
+  title: Bug Whisperer API
+  description: Code analysis API that detects issues and provides auto-fixes using ESLint
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3001/api
+    description: Local development server
+
+paths:
+  /analyze:
+    post:
+      summary: Analyze code for issues and provide fixes
+      description: Analyzes JavaScript code using ESLint and returns detected issues with auto-fixes when possible
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - language
+                - filename
+                - code
+              properties:
+                language:
+                  type: string
+                  enum: [javascript]
+                  description: Programming language of the code
+                filename:
+                  type: string
+                  description: Name of the file being analyzed
+                  example: "example.js"
+                code:
+                  type: string
+                  description: The source code to analyze
+                  example: "var x = 5\nconsole.log(x)"
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issues:
+                    type: array
+                    description: Array of detected issues
+                    items:
+                      type: object
+                      properties:
+                        line:
+                          type: integer
+                          description: Line number where issue occurs
+                        column:
+                          type: integer
+                          description: Column number where issue occurs
+                        severity:
+                          type: string
+                          enum: [error, warning]
+                          description: Severity level of the issue
+                        message:
+                          type: string
+                          description: Description of the issue
+                        rule:
+                          type: string
+                          description: ESLint rule that was violated
+                        suggestion:
+                          type: string
+                          description: Short suggestion for fixing the issue
+                  fixed_code:
+                    type: string
+                    description: Code with auto-fixes applied (if any)
+                  lesson:
+                    type: string
+                    description: Educational lesson based on detected issues
+                  stats:
+                    type: object
+                    description: Analysis statistics
+                    properties:
+                      total_issues:
+                        type: integer
+                        description: Total number of issues found
+                      errors:
+                        type: integer
+                        description: Number of error-level issues
+                      warnings:
+                        type: integer
+                        description: Number of warning-level issues
+                      auto_fixed:
+                        type: boolean
+                        description: Whether any auto-fixes were applied
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    description: Error message
+                  details:
+                    type: string
+                    description: Additional error details
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns the health status of the API
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  service:
+                    type: string
+                    example: "Bug Whisperer API"
