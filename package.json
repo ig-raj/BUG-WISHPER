@@ -6,9 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "build": "cd frontend && npm install && npx react-scripts build",
+    "build": "node build-frontend.js",
     "install-frontend": "cd frontend && npm install",
-    "postinstall": "npm run build",
     "deploy:railway": "railway up",
     "deploy:heroku": "git push heroku main"
   },

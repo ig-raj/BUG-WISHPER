@@ -58,7 +58,11 @@ Deploy Bug Whisperer to make it accessible to anyone with a public link. Here ar
    - Go to [vercel.com](https://vercel.com)
    - Sign up with GitHub
    - Click "New Project" → Import your repository
-   - Vercel automatically detects and deploys!
+   - **Configure Build Settings**:
+     - Root Directory: `frontend`
+     - Build Command: `npm run build`
+     - Output Directory: `build`
+   - Deploy!
 
 3. **Your app is live!** 🎉
    - URL: `https://your-app-name.vercel.app`
