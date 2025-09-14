@@ -2,6 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const { analyzeJS } = require('./analyzer/eslintAnalyzer');
@@ -185,7 +186,18 @@ app.get('/api/health', (req, res) => {
 
 // Serve React app for all other routes
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'frontend/build/index.html'));
+    const buildPath = path.join(__dirname, 'frontend/build/index.html');
+    
+    // Check if build exists, if not serve a simple message
+    if (fs.existsSync(buildPath)) {
+        res.sendFile(buildPath);
+    } else {
+        res.json({ 
+            message: 'Bug Whisperer API is running', 
+            api: '/api/analyze',
+            health: '/api/health'
+        });
+    }
 });
 
 app.listen(PORT, () => {
