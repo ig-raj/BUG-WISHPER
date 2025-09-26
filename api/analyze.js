@@ -1,5 +1,87 @@
 // api/analyze.js - Vercel serverless function for code analysis
-const { analyzeJS } = require('../analyzer/eslintAnalyzer');
+
+// Simple code analyzer that works in serverless environment
+function simpleAnalyzeJS({ code }) {
+    const issues = [];
+    const lines = code.split('\n');
+    let fixedCode = code;
+    
+    // Check for common issues
+    lines.forEach((line, index) => {
+        const lineNum = index + 1;
+        const trimmedLine = line.trim();
+        
+        // Check for unterminated strings
+        if (trimmedLine.includes('"') || trimmedLine.includes("'")) {
+            const doubleQuotes = (line.match(/"/g) || []).length;
+            const singleQuotes = (line.match(/'/g) || []).length;
+            
+            if (doubleQuotes % 2 !== 0 || singleQuotes % 2 !== 0) {
+                issues.push({
+                    line: lineNum,
+                    severity: 'error',
+                    message: 'Unterminated string literal',
+                    suggestion: 'Add missing closing quote'
+                });
+                
+                // Fix unterminated strings - insert quote before closing parenthesis
+                if (doubleQuotes % 2 !== 0) {
+                    const lastParenIndex = line.lastIndexOf(')');
+                    if (lastParenIndex > -1) {
+                        const fixedLine = line.slice(0, lastParenIndex) + '"' + line.slice(lastParenIndex);
+                        fixedCode = fixedCode.replace(line, fixedLine);
+                    } else {
+                        fixedCode = fixedCode.replace(line, line + '"');
+                    }
+                } else if (singleQuotes % 2 !== 0) {
+                    const lastParenIndex = line.lastIndexOf(')');
+                    if (lastParenIndex > -1) {
+                        const fixedLine = line.slice(0, lastParenIndex) + "'" + line.slice(lastParenIndex);
+                        fixedCode = fixedCode.replace(line, fixedLine);
+                    } else {
+                        fixedCode = fixedCode.replace(line, line + "'");
+                    }
+                }
+            }
+        }
+        
+        // Check for missing semicolons
+        if (trimmedLine && 
+            !trimmedLine.endsWith(';') && 
+            !trimmedLine.endsWith('{') && 
+            !trimmedLine.endsWith('}') && 
+            !trimmedLine.startsWith('//') &&
+            (trimmedLine.includes('console.') || trimmedLine.includes('='))) {
+            issues.push({
+                line: lineNum,
+                severity: 'warning',
+                message: 'Missing semicolon',
+                suggestion: 'Add semicolon at end of statement'
+            });
+            
+            // Fix missing semicolons
+            fixedCode = fixedCode.replace(line, line + ';');
+        }
+        
+        // Check for var usage
+        if (trimmedLine.includes('var ')) {
+            issues.push({
+                line: lineNum,
+                severity: 'warning',
+                message: 'Unexpected var, use let or const instead',
+                suggestion: 'Use let or const instead of var'
+            });
+            
+            // Fix var to const
+            fixedCode = fixedCode.replace(/var /g, 'const ');
+        }
+    });
+    
+    return {
+        issues,
+        fixed_code: fixedCode
+    };
+}
 
 /**
  * Generates an educational lesson based on code analysis results
@@ -51,7 +133,7 @@ function generateLesson({ issues, originalCode, fixedCode }) {
 • Practice tip: ${tip}`;
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
     // Enable CORS
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -66,6 +148,9 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
+
+    console.log('API called with method:', req.method);
+    console.log('Request body:', req.body);
 
     try {
         const { language, filename, code } = req.body;
@@ -85,7 +170,7 @@ export default async function handler(req, res) {
         }
 
         // Analyze the code
-        const result = await analyzeJS({ filename, code });
+        const result = simpleAnalyzeJS({ filename, code });
 
         // Generate educational lesson
         const lesson = generateLesson({
