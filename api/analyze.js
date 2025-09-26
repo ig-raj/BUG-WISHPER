@@ -133,93 +133,85 @@ function generateLesson({ issues, originalCode, fixedCode }) {
 • Practice tip: ${tip}`;
 }
 
-export default async function handler(req, res) {
-    // Enable CORS first
+export default function handler(req, res) {
+    // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-    // Handle preflight requests
+    // Handle preflight
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(200).end();
     }
 
-    // Debug logging
-    console.log('Method:', req.method);
-    console.log('Headers:', req.headers);
-    console.log('Body:', req.body);
-
-    // Accept both GET and POST for testing
-    if (req.method !== 'POST' && req.method !== 'GET') {
-        console.log('Method not allowed:', req.method);
-        return res.status(405).json({ error: `Method ${req.method} not allowed` });
-    }
-
-    // For GET requests, return a test response
+    // For GET requests, return test response
     if (req.method === 'GET') {
-        return res.json({ 
-            message: 'Analyze API is working', 
-            method: req.method,
+        return res.status(200).json({
+            message: 'Bug Whisperer API is working!',
             timestamp: new Date().toISOString()
         });
+    }
+
+    // Only accept POST for analysis
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Method not allowed' });
     }
 
     try {
-        // Check if body exists
-        if (!req.body) {
-            console.log('No request body found');
-            return res.status(400).json({
-                error: 'No request body provided'
-            });
-        }
-
-        const { language, filename, code } = req.body;
-        console.log('Parsed body:', { language, filename, codeLength: code?.length });
+        const { language, filename, code } = req.body || {};
 
         // Validate input
-        if (!language || !filename || !code) {
-            console.log('Missing fields:', { language: !!language, filename: !!filename, code: !!code });
-            return res.status(400).json({
-                error: 'Missing required fields: language, filename, code',
-                received: { language, filename, code: code ? 'present' : 'missing' }
+        if (!code) {
+            return res.status(400).json({ error: 'Code is required' });
+        }
+
+        // Simple analysis
+        const issues = [];
+        let fixedCode = code;
+
+        // Check for unterminated strings
+        if (code.includes('"') && (code.match(/"/g) || []).length % 2 !== 0) {
+            issues.push({
+                line: 1,
+                severity: 'error',
+                message: 'Unterminated string literal',
+                suggestion: 'Add missing closing quote'
+            });
+            
+            // Fix by adding quote before closing parenthesis
+            const lastParen = code.lastIndexOf(')');
+            if (lastParen > -1) {
+                fixedCode = code.slice(0, lastParen) + '"' + code.slice(lastParen);
+            } else {
+                fixedCode = code + '"';
+            }
+        }
+
+        // Add semicolon if missing
+        if (!fixedCode.trim().endsWith(';') && !fixedCode.trim().endsWith('}')) {
+            fixedCode += ';';
+            issues.push({
+                line: 1,
+                severity: 'warning',
+                message: 'Missing semicolon',
+                suggestion: 'Add semicolon at end of statement'
             });
         }
 
-        // Currently only support JavaScript
-        if (language !== 'javascript') {
-            return res.status(400).json({
-                error: 'Only JavaScript is supported in this MVP'
-            });
-        }
+        const lesson = issues.length > 0 
+            ? 'Code Quality Check: Found issues that were automatically fixed'
+            : 'Code Quality Check: No issues found!';
 
-        // Analyze the code
-        const result = simpleAnalyzeJS({ filename, code });
-
-        // Generate educational lesson
-        const lesson = generateLesson({
-            issues: result.issues,
-            originalCode: code,
-            fixedCode: result.fixed_code
+        return res.status(200).json({
+            issues,
+            fixed_code: fixedCode,
+            lesson
         });
 
-        // Return response with lesson included
-        const response = {
-            issues: result.issues,
-            fixed_code: result.fixed_code,
-            lesson: lesson
-        };
-        
-        console.log('Sending response:', response);
-        return res.status(200).json(response);
-
     } catch (error) {
-        console.error('Analysis error:', error);
-        const errorResponse = {
-            error: 'Internal server error during code analysis',
-            details: error.message,
-            timestamp: new Date().toISOString()
-        };
-        return res.status(500).json(errorResponse);
+        return res.status(500).json({
+            error: 'Analysis failed',
+            details: error.message
+        });
     }
 }
