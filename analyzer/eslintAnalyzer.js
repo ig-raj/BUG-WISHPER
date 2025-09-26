@@ -26,6 +26,9 @@ const { ESLint } = require('eslint');
  */
 async function analyzeJS({ filename, code }) {
   try {
+    // Pre-process code to fix basic syntax errors
+    const preprocessedCode = preProcessSyntaxFixes(code);
+    
     // Configure ESLint with recommended rules and auto-fix enabled
     const eslint = new ESLint({
       fix: true,
@@ -55,8 +58,8 @@ async function analyzeJS({ filename, code }) {
       useEslintrc: false
     });
 
-    // Lint the code
-    const results = await eslint.lintText(code, { filePath: filename });
+    // Lint the preprocessed code
+    const results = await eslint.lintText(preprocessedCode, { filePath: filename });
     const result = results[0];
 
     // Extract issues and map to our format
@@ -67,8 +70,8 @@ async function analyzeJS({ filename, code }) {
       suggestion: generateSuggestion(message.ruleId, message.message)
     }));
 
-    // Get fixed code from ESLint auto-fix
-    let fixed_code = result.output || code;
+    // Get fixed code from ESLint auto-fix, fallback to preprocessed code
+    let fixed_code = result.output || preprocessedCode;
 
     // Apply custom fixes for issues ESLint can't auto-fix
     fixed_code = applyCustomFixes(fixed_code, issues);
@@ -89,6 +92,9 @@ async function analyzeJS({ filename, code }) {
       line = parseInt(lineMatch[1], 10);
     }
 
+    // Try to apply basic syntax fixes even when ESLint fails
+    const attemptedFix = preProcessSyntaxFixes(code);
+
     return {
       issues: [{
         line: line,
@@ -96,9 +102,113 @@ async function analyzeJS({ filename, code }) {
         message: error.message,
         suggestion: getSyntaxErrorSuggestion(error.message)
       }],
-      fixed_code: code
+      fixed_code: attemptedFix
     };
   }
+}
+
+/**
+ * Pre-processes code to fix common syntax errors before ESLint analysis
+ * @param {string} code - The original code
+ * @returns {string} Code with basic syntax fixes applied
+ */
+function preProcessSyntaxFixes(code) {
+  let fixedCode = code;
+  
+  // Fix unterminated strings
+  const lines = fixedCode.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    // Fix unterminated strings by finding the last unmatched quote
+    line = fixUnterminatedStrings(line);
+    
+    // Fix missing semicolons at end of statements
+    const trimmedLine = line.trim();
+    if (trimmedLine && 
+        !trimmedLine.endsWith(';') && 
+        !trimmedLine.endsWith('{') && 
+        !trimmedLine.endsWith('}') && 
+        !trimmedLine.endsWith(')') &&
+        !trimmedLine.startsWith('//') && 
+        !trimmedLine.startsWith('/*') && 
+        !trimmedLine.includes('function') &&
+        !trimmedLine.includes('if') &&
+        !trimmedLine.includes('for') &&
+        !trimmedLine.includes('while') &&
+        !trimmedLine.includes('else')) {
+      line = line + ';';
+    }
+    
+    lines[i] = line;
+  }
+  
+  return lines.join('\n');
+}
+
+/**
+ * Fixes unterminated strings in a single line of code
+ * @param {string} line - The line to fix
+ * @returns {string} Line with unterminated strings fixed
+ */
+function fixUnterminatedStrings(line) {
+  let result = '';
+  let inString = false;
+  let stringChar = '';
+  let escaped = false;
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+    
+    if (char === '\\' && inString) {
+      result += char;
+      escaped = true;
+      continue;
+    }
+    
+    if ((char === '"' || char === "'") && !inString) {
+      // Starting a string
+      inString = true;
+      stringChar = char;
+      result += char;
+    } else if (char === stringChar && inString) {
+      // Ending a string
+      inString = false;
+      stringChar = '';
+      result += char;
+    } else {
+      result += char;
+    }
+  }
+  
+  // If we're still in a string at the end of the line, we need to be smart about where to close it
+  if (inString && stringChar) {
+    // Look for common patterns where the string should end
+    // For function calls like console.log("text), close before the closing parenthesis
+    const lastParenIndex = result.lastIndexOf(')');
+    const lastBraceIndex = result.lastIndexOf('}');
+    const lastBracketIndex = result.lastIndexOf(']');
+    
+    // Find the rightmost closing delimiter
+    const closingPositions = [lastParenIndex, lastBraceIndex, lastBracketIndex].filter(pos => pos > -1);
+    
+    if (closingPositions.length > 0) {
+      const insertPosition = Math.max(...closingPositions);
+      // Insert the closing quote before the delimiter
+      result = result.slice(0, insertPosition) + stringChar + result.slice(insertPosition);
+    } else {
+      // No closing delimiters found, just close at the end
+      result += stringChar;
+    }
+  }
+  
+  return result;
 }
 
 /**
@@ -209,7 +319,7 @@ function getSyntaxErrorSuggestion(errorMessage) {
   }
   
   if (lowerMessage.includes('unterminated string')) {
-    return 'Add missing closing quote for the string';
+    return 'Missing closing quote for string - automatically added';
   }
   
   if (lowerMessage.includes('unterminated comment')) {
