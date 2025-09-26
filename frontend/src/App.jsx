@@ -30,7 +30,12 @@ function App() {
     console.log('Starting analysis...', { language, filename, codeLength: code.length });
 
     try {
-      const response = await fetch('/api/analyze', {
+      // Use relative path for API - works both locally and on Vercel
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? '/api/analyze'  // Vercel handles this correctly
+        : '/api/analyze'; // Local development
+        
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -43,11 +48,22 @@ function App() {
       });
 
       console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('API error:', errorData);
-        throw new Error(errorData.error || 'Analysis failed');
+        // Try to get error details, but handle cases where response isn't JSON
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          console.error('API error:', errorData);
+          errorMessage = errorData.error || errorMessage;
+        } catch (jsonError) {
+          // Response isn't JSON, get text instead
+          const errorText = await response.text();
+          console.error('Non-JSON error response:', errorText);
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
