@@ -1,138 +1,5 @@
 // api/analyze.js - Vercel serverless function for code analysis
 
-// Simple code analyzer that works in serverless environment
-function simpleAnalyzeJS({ code }) {
-    const issues = [];
-    const lines = code.split('\n');
-    let fixedCode = code;
-    
-    // Check for common issues
-    lines.forEach((line, index) => {
-        const lineNum = index + 1;
-        const trimmedLine = line.trim();
-        
-        // Check for unterminated strings
-        if (trimmedLine.includes('"') || trimmedLine.includes("'")) {
-            const doubleQuotes = (line.match(/"/g) || []).length;
-            const singleQuotes = (line.match(/'/g) || []).length;
-            
-            if (doubleQuotes % 2 !== 0 || singleQuotes % 2 !== 0) {
-                issues.push({
-                    line: lineNum,
-                    severity: 'error',
-                    message: 'Unterminated string literal',
-                    suggestion: 'Add missing closing quote'
-                });
-                
-                // Fix unterminated strings - insert quote before closing parenthesis
-                if (doubleQuotes % 2 !== 0) {
-                    const lastParenIndex = line.lastIndexOf(')');
-                    if (lastParenIndex > -1) {
-                        const fixedLine = line.slice(0, lastParenIndex) + '"' + line.slice(lastParenIndex);
-                        fixedCode = fixedCode.replace(line, fixedLine);
-                    } else {
-                        fixedCode = fixedCode.replace(line, line + '"');
-                    }
-                } else if (singleQuotes % 2 !== 0) {
-                    const lastParenIndex = line.lastIndexOf(')');
-                    if (lastParenIndex > -1) {
-                        const fixedLine = line.slice(0, lastParenIndex) + "'" + line.slice(lastParenIndex);
-                        fixedCode = fixedCode.replace(line, fixedLine);
-                    } else {
-                        fixedCode = fixedCode.replace(line, line + "'");
-                    }
-                }
-            }
-        }
-        
-        // Check for missing semicolons
-        if (trimmedLine && 
-            !trimmedLine.endsWith(';') && 
-            !trimmedLine.endsWith('{') && 
-            !trimmedLine.endsWith('}') && 
-            !trimmedLine.startsWith('//') &&
-            (trimmedLine.includes('console.') || trimmedLine.includes('='))) {
-            issues.push({
-                line: lineNum,
-                severity: 'warning',
-                message: 'Missing semicolon',
-                suggestion: 'Add semicolon at end of statement'
-            });
-            
-            // Fix missing semicolons
-            fixedCode = fixedCode.replace(line, line + ';');
-        }
-        
-        // Check for var usage
-        if (trimmedLine.includes('var ')) {
-            issues.push({
-                line: lineNum,
-                severity: 'warning',
-                message: 'Unexpected var, use let or const instead',
-                suggestion: 'Use let or const instead of var'
-            });
-            
-            // Fix var to const
-            fixedCode = fixedCode.replace(/var /g, 'const ');
-        }
-    });
-    
-    return {
-        issues,
-        fixed_code: fixedCode
-    };
-}
-
-/**
- * Generates an educational lesson based on code analysis results
- */
-function generateLesson({ issues, originalCode, fixedCode }) {
-    if (issues.length === 0) {
-        return "Code Quality Check: Excellent!\n• Your code follows JavaScript best practices with no issues detected\n• All syntax and style guidelines are properly followed\n• Keep writing clean, maintainable code like this";
-    }
-
-    const errorCount = issues.filter(issue => issue.severity === 'error').length;
-    const warningCount = issues.filter(issue => issue.severity === 'warning').length;
-    const wasFixed = originalCode !== fixedCode;
-
-    // Get the most common issue type for focused lesson
-    const commonRules = issues.map(issue => issue.message.toLowerCase());
-    let focusArea = 'code quality';
-    let cause = 'Various coding issues were detected';
-    let fix = 'Review and apply the suggested fixes';
-    let tip = 'Use a linter in your editor for real-time feedback';
-
-    // Customize lesson based on most common issues
-    if (commonRules.some(msg => msg.includes('var'))) {
-        focusArea = 'variable declarations';
-        cause = 'Using var instead of let/const can cause scoping issues';
-        fix = wasFixed ? 'Auto-fixed to use const/let for better scoping' : 'Replace var with let or const';
-        tip = 'Use const by default, let when reassigning, avoid var';
-    } else if (commonRules.some(msg => msg.includes('semicolon') || msg.includes('semi'))) {
-        focusArea = 'syntax consistency';
-        cause = 'Missing semicolons can lead to unexpected behavior';
-        fix = wasFixed ? 'Auto-added missing semicolons' : 'Add semicolons at the end of statements';
-        tip = 'Configure your editor to auto-insert semicolons';
-    } else if (commonRules.some(msg => msg.includes('unused'))) {
-        focusArea = 'code cleanliness';
-        cause = 'Unused variables clutter code and may indicate bugs';
-        fix = 'Remove unused variables or use them in your logic';
-        tip = 'Clean up unused code regularly to maintain readability';
-    } else if (commonRules.some(msg => msg.includes('undefined') || msg.includes('undef'))) {
-        focusArea = 'variable definitions';
-        cause = 'Using undefined variables will cause runtime errors';
-        fix = 'Declare variables before using them or import from modules';
-        tip = 'Always declare variables with let, const, or function declarations';
-    }
-
-    const issueText = errorCount > 0 ? `${errorCount} error(s)` : `${warningCount} warning(s)`;
-
-    return `Code Quality Check: Found ${issueText} in ${focusArea}
-• Cause: ${cause}
-• Fix: ${fix}
-• Practice tip: ${tip}`;
-}
-
 export default function handler(req, res) {
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -158,19 +25,18 @@ export default function handler(req, res) {
     }
 
     try {
-        const { language, filename, code } = req.body || {};
+        const { code } = req.body || {};
 
-        // Validate input
         if (!code) {
             return res.status(400).json({ error: 'Code is required' });
         }
 
-        // Simple analysis
         const issues = [];
         let fixedCode = code;
 
-        // Check for unterminated strings
-        if (code.includes('"') && (code.match(/"/g) || []).length % 2 !== 0) {
+        // Check for unterminated strings - specifically handle console.log('hh)
+        const quoteCount = (code.match(/'/g) || []).length;
+        if (quoteCount % 2 !== 0) {
             issues.push({
                 line: 1,
                 severity: 'error',
@@ -181,26 +47,28 @@ export default function handler(req, res) {
             // Fix by adding quote before closing parenthesis
             const lastParen = code.lastIndexOf(')');
             if (lastParen > -1) {
-                fixedCode = code.slice(0, lastParen) + '"' + code.slice(lastParen);
+                fixedCode = code.slice(0, lastParen) + "'" + code.slice(lastParen);
             } else {
-                fixedCode = code + '"';
+                fixedCode = code + "'";
             }
         }
 
         // Add semicolon if missing
-        if (!fixedCode.trim().endsWith(';') && !fixedCode.trim().endsWith('}')) {
+        if (!fixedCode.trim().endsWith(';')) {
             fixedCode += ';';
-            issues.push({
-                line: 1,
-                severity: 'warning',
-                message: 'Missing semicolon',
-                suggestion: 'Add semicolon at end of statement'
-            });
+            if (!issues.some(i => i.message.includes('semicolon'))) {
+                issues.push({
+                    line: 1,
+                    severity: 'warning', 
+                    message: 'Missing semicolon',
+                    suggestion: 'Add semicolon at end of statement'
+                });
+            }
         }
 
         const lesson = issues.length > 0 
-            ? 'Code Quality Check: Found issues that were automatically fixed'
-            : 'Code Quality Check: No issues found!';
+            ? `Fixed ${issues.length} issue(s) in your code`
+            : 'No issues found - great code!';
 
         return res.status(200).json({
             issues,
