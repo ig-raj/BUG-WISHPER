@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "echo 'Use npm run build for production deployment'",
-    "build": "cd frontend && npm run build",
+    "build": "echo 'Build handled by Vercel'",
     "postinstall": "cd frontend && npm install",
     "deploy:railway": "railway up",
     "deploy:heroku": "git push heroku main"
