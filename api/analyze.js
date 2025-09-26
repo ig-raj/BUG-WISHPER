@@ -134,31 +134,55 @@ function generateLesson({ issues, originalCode, fixedCode }) {
 }
 
 export default async function handler(req, res) {
-    // Enable CORS
-    res.setHeader('Access-Control-Allow-Credentials', true);
+    // Enable CORS first
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+    // Handle preflight requests
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
     }
 
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+    // Debug logging
+    console.log('Method:', req.method);
+    console.log('Headers:', req.headers);
+    console.log('Body:', req.body);
+
+    // Accept both GET and POST for testing
+    if (req.method !== 'POST' && req.method !== 'GET') {
+        console.log('Method not allowed:', req.method);
+        return res.status(405).json({ error: `Method ${req.method} not allowed` });
     }
 
-    console.log('API called with method:', req.method);
-    console.log('Request body:', req.body);
+    // For GET requests, return a test response
+    if (req.method === 'GET') {
+        return res.json({ 
+            message: 'Analyze API is working', 
+            method: req.method,
+            timestamp: new Date().toISOString()
+        });
+    }
 
     try {
+        // Check if body exists
+        if (!req.body) {
+            console.log('No request body found');
+            return res.status(400).json({
+                error: 'No request body provided'
+            });
+        }
+
         const { language, filename, code } = req.body;
+        console.log('Parsed body:', { language, filename, codeLength: code?.length });
 
         // Validate input
         if (!language || !filename || !code) {
+            console.log('Missing fields:', { language: !!language, filename: !!filename, code: !!code });
             return res.status(400).json({
-                error: 'Missing required fields: language, filename, code'
+                error: 'Missing required fields: language, filename, code',
+                received: { language, filename, code: code ? 'present' : 'missing' }
             });
         }
 
@@ -180,17 +204,22 @@ export default async function handler(req, res) {
         });
 
         // Return response with lesson included
-        res.json({
+        const response = {
             issues: result.issues,
             fixed_code: result.fixed_code,
             lesson: lesson
-        });
+        };
+        
+        console.log('Sending response:', response);
+        return res.status(200).json(response);
 
     } catch (error) {
         console.error('Analysis error:', error);
-        res.status(500).json({
+        const errorResponse = {
             error: 'Internal server error during code analysis',
-            details: error.message
-        });
+            details: error.message,
+            timestamp: new Date().toISOString()
+        };
+        return res.status(500).json(errorResponse);
     }
 }
